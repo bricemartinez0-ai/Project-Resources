@@ -4,8 +4,8 @@
  * ║                                                                ║
  * ║   Master Board: SparkFun Thing Plus C (ESP32)                  ║
  * ║   Touch: Qwiic MPR121 (SDA 21, SCL 22 @ 100kHz)                ║
- * ║   Audio: PAM8002A / 8002A amp (GPIO25 DAC1 -> AUDIO IN)       ║
- * ║         Speaker output: 4Ω or 8Ω speaker via amp channels       ║
+ * ║   Audio: 8002A mono amp module (GPIO25 DAC1 -> AUDIO IN)       ║
+ * ║         Power: ESP32 3V3 rail to 8002A VCC                     ║
  * ║   Lights: WS2812 7-LED Ring (GPIO 14 -> DIN, Powered via VUSB)  ║
  * ║   Storage: Onboard MicroSD Reader (CS = GPIO 5)                ║
  * ╚═══════════════════════════════════════════════════════════════════════╝
@@ -35,13 +35,17 @@
 #define MPR121_ADDR    0x5A    // Default I2C Address
 #define SD_CS_PIN      5       // Thing Plus C Built-in SD CS Pin
 #define AMP_AUDIO_PIN  25      // ESP32 DAC1 -> 8002A audio input (analog audio)
-#define AMP_GND_PIN    32      // Optional debug ground reference (not used in normal circuit)
+#define AMP_VCC_PIN    3.3f    // 8002A powered from ESP32 3V3 rail
 
-// NOTE:
-// The 8002A-style PAM amplifier module is wired as an analog input amplifier.
-// It does NOT use the SPI/I2S pins for audio playback. The ESP32 DAC output
-// on GPIO25 feeds the amp input through a coupling capacitor (recommended 1uF
-// to 10uF) and a series resistor if your module requires it.
+// IMPORTANT:
+// The 8002A module in this project is powered from the ESP32 3V3 rail.
+// Audio is fed from GPIO25 (DAC1) through a coupling capacitor.
+// Do NOT use the 5V rail unless the specific module label says 5V is allowed.
+//
+// Recommended wiring:
+// ESP32 3V3  -> 8002A VCC
+// ESP32 GND  -> 8002A GND
+// ESP32 GPIO25 -> 8002A AUDIO IN (via 1uF to 10uF series capacitor)
 
 // ════════════════════════════════════════════════════════════════
 // ▌ OBJECT INITIALIZATION
@@ -156,7 +160,7 @@ void setup() {
   }
   Serial.println();
 
-  // 4. Configure Audio Output (GPIO25 DAC1 -> 8002A analog input)
+  // 4. Configure Audio Output (ESP32 DAC1 -> 8002A analog input, powered from 3V3)
   Serial.println("[4/5] Initializing analog audio output...");
   out = new AudioOutputI2S(0, AudioOutputI2S::INTERNAL_DAC);
   if (out == NULL) {
@@ -164,12 +168,11 @@ void setup() {
     while (1);
   }
 
-  // The 8002A is usually a class-D analog-input amplifier module.
-  // Keep mono output enabled for a single speaker channel or use stereo only if
-  // your hardware is wired for left/right audio and the board supports it.
+  // 8002A board is a mono class-D amp intended for direct analog audio input.
+  // Power it from the ESP32 3V3 rail and feed it through a series coupling capacitor.
   out->SetOutputModeMono(true);
   out->SetGain(0.35);
-  Serial.println("      ✓ Audio output configured for 8002A amplifier.\n");
+  Serial.println("      ✓ Audio output configured for 3V3-powered 8002A amplifier.\n");
 
   Serial.println("[5/5] Allocating WAV generator...");
   wav = new AudioGeneratorWAV();
