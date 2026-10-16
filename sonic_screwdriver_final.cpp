@@ -1,13 +1,14 @@
 /*
- * ╔════════════════════════════════════════════════════════════════╗
+ * ╔═══════════════════════════════════════════════════════════════════════╗
  * ║   SONIC SCREWDRIVER CONTROLLER - FINAL VERSION                 ║
  * ║                                                                ║
  * ║   Master Board: SparkFun Thing Plus C (ESP32)                  ║
  * ║   Touch: Qwiic MPR121 (SDA 21, SCL 22 @ 100kHz)                ║
- * ║   Audio: PAM8403 Amp (GPIO 25 -> Left In, Powered via VUSB)    ║
+ * ║   Audio: PAM8002A / 8002A amp (GPIO25 DAC1 -> AUDIO IN)       ║
+ * ║         Speaker output: 4Ω or 8Ω speaker via amp channels       ║
  * ║   Lights: WS2812 7-LED Ring (GPIO 14 -> DIN, Powered via VUSB)  ║
  * ║   Storage: Onboard MicroSD Reader (CS = GPIO 5)                ║
- * ╚════════════════════════════════════════════════════════════════╝
+ * ╚═══════════════════════════════════════════════════════════════════════╝
  */
 
 #include <Wire.h>
@@ -29,10 +30,18 @@
 // ════════════════════════════════════════════════════════════════
 // ▌ HARDWARE PIN CONFIGURATIONS
 // ════════════════════════════════════════════════════════════════
-#define LED_PIN       14      // WS2812 Data Pin
-#define NUM_LEDS      7       // 7-LED Jewel/Ring
-#define MPR121_ADDR   0x5A    // Default I2C Address
-#define SD_CS_PIN     5       // Thing Plus C Built-in SD CS Pin
+#define LED_PIN        14      // WS2812 Data Pin
+#define NUM_LEDS       7       // 7-LED Jewel/Ring
+#define MPR121_ADDR    0x5A    // Default I2C Address
+#define SD_CS_PIN      5       // Thing Plus C Built-in SD CS Pin
+#define AMP_AUDIO_PIN  25      // ESP32 DAC1 -> 8002A audio input (analog audio)
+#define AMP_GND_PIN    32      // Optional debug ground reference (not used in normal circuit)
+
+// NOTE:
+// The 8002A-style PAM amplifier module is wired as an analog input amplifier.
+// It does NOT use the SPI/I2S pins for audio playback. The ESP32 DAC output
+// on GPIO25 feeds the amp input through a coupling capacitor (recommended 1uF
+// to 10uF) and a series resistor if your module requires it.
 
 // ════════════════════════════════════════════════════════════════
 // ▌ OBJECT INITIALIZATION
@@ -139,7 +148,7 @@ void setup() {
     } else {
       Serial.println("      ✓ SD Card initialized.");
       sdCardReady = true;
-      
+
       // List files on SD card (safe method)
       Serial.println("      Files on SD card:");
       listSDFiles();
@@ -147,16 +156,20 @@ void setup() {
   }
   Serial.println();
 
-  // 4. Configure Audio Output (Internal DAC -> GPIO 25)
-  Serial.println("[4/5] Initializing audio output...");
+  // 4. Configure Audio Output (GPIO25 DAC1 -> 8002A analog input)
+  Serial.println("[4/5] Initializing analog audio output...");
   out = new AudioOutputI2S(0, AudioOutputI2S::INTERNAL_DAC);
   if (out == NULL) {
     Serial.println("      ❌ Failed to allocate AudioOutputI2S!");
     while (1);
   }
+
+  // The 8002A is usually a class-D analog-input amplifier module.
+  // Keep mono output enabled for a single speaker channel or use stereo only if
+  // your hardware is wired for left/right audio and the board supports it.
   out->SetOutputModeMono(true);
   out->SetGain(0.35);
-  Serial.println("      ✓ Audio output configured.\n");
+  Serial.println("      ✓ Audio output configured for 8002A amplifier.\n");
 
   Serial.println("[5/5] Allocating WAV generator...");
   wav = new AudioGeneratorWAV();
