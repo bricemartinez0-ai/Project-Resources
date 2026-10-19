@@ -32,14 +32,14 @@
 // ════════════════════════════════════════════════════════════════
 #define LED_PIN        14      // WS2812 Data Pin
 #define NUM_LEDS       7       // 7-LED Jewel/Ring
-#define MPR121_ADDR    0x5A    // Default I2C Address
+#define MPR121_ADDR    0x5A    // Default I2C Address (detected on bus)
 #define SD_CS_PIN      5       // Thing Plus C Built-in SD CS Pin
 #define AMP_AUDIO_PIN  25      // ESP32 DAC1 -> 8002A audio input (analog audio)
 #define AMP_VCC_PIN    3.3f    // 8002A powered from ESP32 3V3 rail
 
 // IMPORTANT:
 // The 8002A module in this project is powered from the ESP32 3V3 rail.
-// Audio is fed from GPIO25 (DAC1) through a coupling capacitor.
+// Audio is fed from GPIO25 (DAC1) through a coupling capacitor (recommended).
 // Do NOT use the 5V rail unless the specific module label says 5V is allowed.
 //
 // Recommended wiring:
@@ -98,6 +98,23 @@ void setupSonicColors() {
   padColors[11] = pixels.Color(255, 0, 0);     // Red
 }
 
+// Helper to print MPR121 filtered/baseline for debugging
+void printMPR121Readings() {
+  Serial.println("MPR121 readings:");
+  Serial.print("Filtered:");
+  for (int i = 0; i < 12; i++) {
+    Serial.print(" ");
+    Serial.print(cap.filteredData(i));
+  }
+  Serial.println();
+  Serial.print("Baseline:");
+  for (int i = 0; i < 12; i++) {
+    Serial.print(" ");
+    Serial.print(cap.baselineData(i));
+  }
+  Serial.println();
+}
+
 // ════════════════════════════════════════════════════════════════
 // ▌ SETUP
 // ════════════════════════════════════════════════════════════════
@@ -110,7 +127,7 @@ void setup() {
   Serial.println("====================================");
 
   // 1. Initialize NeoPixels
-  Serial.println("[1/5] Initializing NeoPixels...");
+  Serial.println("[1/6] Initializing NeoPixels...");
   pixels.begin();
   pixels.setBrightness(80);
   pixels.clear();
@@ -123,25 +140,34 @@ void setup() {
     pixels.setPixelColor(i, pixels.Color(255, 255, 255));
   }
   pixels.show();
-  delay(500);
+  delay(300);
   pixels.clear();
   pixels.show();
   Serial.println("      ✓ LED test complete.\n");
 
   // 2. Initialize Qwiic I2C Bus (100kHz for high stability)
-  Serial.println("[2/5] Initializing I2C bus...");
+  Serial.println("[2/6] Initializing I2C bus...");
   Wire.begin(21, 22);
   Wire.setClock(100000);
 
+  // Try to initialize MPR121 and print diagnostics
+  Serial.print("      Trying MPR121 at 0x"); Serial.println(MPR121_ADDR, HEX);
   if (!cap.begin(MPR121_ADDR, &Wire)) {
-    Serial.println("      ❌ ERROR: MPR121 not found!");
-    while (1);
+    Serial.println("      ❌ ERROR: MPR121 not found at 0x5A!");
+    Serial.println("      Please check Stemma cable orientation, VCC=3.3V and common GND.");
+    // don't hang the system; continue so other systems (LEDs/audio) still function
+  } else {
+    Serial.println("      ✓ MPR121 Touch Sensor Online.");
+
+    // Lower thresholds from aggressive 40/20 to a more typical 12/6 for sensitivity
+    cap.setAutoconfig(true);       // try autoconfig to optimize electrodes
+    cap.setThresholds(12, 6);     // touch threshold, release threshold
+    delay(50);
+    printMPR121Readings();
   }
-  cap.setThresholds(40, 20);
-  Serial.println("      ✓ MPR121 Touch Sensor Online.\n");
 
   // 3. Initialize MicroSD Card
-  Serial.println("[3/5] Initializing SD card...");
+  Serial.println("[3/6] Initializing SD card...");
   if (!SD.begin(SD_CS_PIN)) {
     Serial.println("      ❌ SD Card initialization failed!");
     sdCardReady = false;
@@ -161,7 +187,7 @@ void setup() {
   Serial.println();
 
   // 4. Configure Audio Output (ESP32 DAC1 -> 8002A analog input, powered from 3V3)
-  Serial.println("[4/5] Initializing analog audio output...");
+  Serial.println("[4/6] Initializing analog audio output...");
   out = new AudioOutputI2S(0, AudioOutputI2S::INTERNAL_DAC);
   if (out == NULL) {
     Serial.println("      ❌ Failed to allocate AudioOutputI2S!");
@@ -169,12 +195,11 @@ void setup() {
   }
 
   // 8002A board is a mono class-D amp intended for direct analog audio input.
-  // Power it from the ESP32 3V3 rail and feed it through a series coupling capacitor.
   out->SetOutputModeMono(true);
-  out->SetGain(0.35);
+  out->SetGain(0.12); // start conservative to avoid pops and high volume
   Serial.println("      ✓ Audio output configured for 3V3-powered 8002A amplifier.\n");
 
-  Serial.println("[5/5] Allocating WAV generator...");
+  Serial.println("[5/6] Allocating WAV generator...");
   wav = new AudioGeneratorWAV();
   if (wav == NULL) {
     Serial.println("      ❌ Failed to allocate WAV generator!");
@@ -182,6 +207,7 @@ void setup() {
   }
   Serial.println("      ✓ WAV generator ready.\n");
 
+  Serial.println("[6/6] Finalizing setup. System ready.");
   Serial.println("====================================");
   Serial.println("   System ready. Touch a pad!");
   Serial.println("====================================\n");
@@ -199,6 +225,7 @@ void loop() {
     }
   }
 
+  // Read touches if MPR121 is initialized
   currentTouched = cap.touched();
 
   for (uint8_t i = 0; i < NUM_PADS; i++) {
@@ -222,6 +249,14 @@ void loop() {
       pixels.clear();
       pixels.show();
     }
+  }
+
+  // occasional debug print if no touches for a long time
+  static unsigned long lastDebug = 0;
+  if (millis() - lastDebug > 5000) {
+    lastDebug = millis();
+    // print filtered/baseline to help debugging
+    printMPR121Readings();
   }
 
   lastTouched = currentTouched;
