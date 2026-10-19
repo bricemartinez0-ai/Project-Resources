@@ -7,6 +7,14 @@
  *        Power: ESP32 3V3 rail to 8002A VCC
  * Lights: WS2812 7-LED Ring (GPIO 14 -> DIN, Powered via VUSB)
  * Storage: Onboard MicroSD Reader (CS = GPIO 5)
+ *
+ * Notes and fixes in this revision:
+ *  - Lowered audio library gain for cleaner, lower-level DAC output
+ *  - Add guard to avoid retriggering audio while a WAV is already playing
+ *  - Increased MPR121 touch thresholds slightly to reduce false triggers
+ *  - Added guidance to use a series coupling capacitor (1uF-10uF) between
+ *    GPIO25 and the amplifier input to remove DC offset and reduce buzzing
+ *  - Recommend mono 16-bit PCM WAVs (22.05kHz or 44.1kHz) on SD card
  */
 
 #include <Wire.h>
@@ -34,14 +42,11 @@
 #define AMP_VCC_PIN    3.3f    // 8002A powered from ESP32 3V3 rail
 
 // IMPORTANT:
-// The 8002A module in this project is powered from the ESP32 3V3 rail.
-// Audio is fed from GPIO25 (DAC1) through a coupling capacitor (recommended).
-// Do NOT use the 5V rail unless the specific module label says 5V is allowed.
-//
-// Recommended wiring:
-// ESP32 3V3  -> 8002A VCC
-// ESP32 GND  -> 8002A GND
-// ESP32 GPIO25 -> 8002A AUDIO IN (via 1uF to 10uF series capacitor)
+// For best audio quality and to avoid DC pops/buzzing, add a 1uF-10uF
+// non-polarized (or electrolytic with correct polarity) coupling capacitor
+// between GPIO25 and the amplifier INPUT. Also keep the amplifier pot
+// reasonably low while testing.
+// WAV files should be 16-bit PCM, mono preferred (22.05kHz or 44.1kHz).
 
 // OBJECT INITIALIZATION
 Adafruit_NeoPixel pixels(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
@@ -149,9 +154,9 @@ void setup() {
   } else {
     Serial.println("      [OK] MPR121 Touch Sensor Online.");
 
-    // Lower thresholds from aggressive 40/20 to a more typical 12/6 for sensitivity
+    // Increase threshold slightly to reduce chatter (was 12/6)
     cap.setAutoconfig(true);       // try autoconfig to optimize electrodes
-    cap.setThresholds(12, 6);     // touch threshold, release threshold
+    cap.setThresholds(18, 8);     // touch threshold, release threshold
     delay(50);
     printMPR121Readings();
   }
@@ -186,7 +191,7 @@ void setup() {
 
   // 8002A board is a mono class-D amp intended for direct analog audio input.
   out->SetOutputModeMono(true);
-  out->SetGain(0.12); // start conservative to avoid pops and high volume
+  out->SetGain(0.08); // reduce gain to help prevent buzzing and clipping
   Serial.println("      [OK] Audio output configured for 3V3-powered 8002A amplifier.\n");
 
   Serial.println("[5/6] Allocating WAV generator...");
@@ -309,7 +314,13 @@ void playWavFile(uint8_t padIndex) {
     return;
   }
 
-  // Stop any currently playing audio
+  // If audio is already playing, ignore new triggers to avoid pops/buzz
+  if (wav != NULL && wav->isRunning()) {
+    Serial.println("[AUDIO] Busy - ignoring new trigger.");
+    return;
+  }
+
+  // Stop any currently playing audio (safety)
   stopAudio();
 
   // Ensure audio generator exists
