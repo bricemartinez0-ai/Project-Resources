@@ -1,14 +1,12 @@
 /*
- * ╔═══════════════════════════════════════════════════════════════════════╗
- * ║   SONIC SCREWDRIVER CONTROLLER - FINAL VERSION                 ║
- * ║                                                                ║
- * ║   Master Board: SparkFun Thing Plus C (ESP32)                  ║
- * ║   Touch: Qwiic MPR121 (SDA 21, SCL 22 @ 100kHz)                ║
- * ║   Audio: 8002A mono amp module (GPIO25 DAC1 -> AUDIO IN)       ║
- * ║         Power: ESP32 3V3 rail to 8002A VCC                     ║
- * ║   Lights: WS2812 7-LED Ring (GPIO 14 -> DIN, Powered via VUSB)  ║
- * ║   Storage: Onboard MicroSD Reader (CS = GPIO 5)                ║
- * ╚═══════════════════════════════════════════════════════════════════════╝
+ * SONIC SCREWDRIVER CONTROLLER - FINAL VERSION
+ *
+ * Master Board: SparkFun Thing Plus C (ESP32)
+ * Touch: Qwiic MPR121 (SDA 21, SCL 22 @ 100kHz)
+ * Audio: 8002A mono amp module (GPIO25 DAC1 -> AUDIO IN)
+ *        Power: ESP32 3V3 rail to 8002A VCC
+ * Lights: WS2812 7-LED Ring (GPIO 14 -> DIN, Powered via VUSB)
+ * Storage: Onboard MicroSD Reader (CS = GPIO 5)
  */
 
 #include <Wire.h>
@@ -27,9 +25,7 @@
 #define _BV(bit) (1 << (bit))
 #endif
 
-// ════════════════════════════════════════════════════════════════
-// ▌ HARDWARE PIN CONFIGURATIONS
-// ════════════════════════════════════════════════════════════════
+// HARDWARE PIN CONFIGURATIONS
 #define LED_PIN        14      // WS2812 Data Pin
 #define NUM_LEDS       7       // 7-LED Jewel/Ring
 #define MPR121_ADDR    0x5A    // Default I2C Address (detected on bus)
@@ -47,9 +43,7 @@
 // ESP32 GND  -> 8002A GND
 // ESP32 GPIO25 -> 8002A AUDIO IN (via 1uF to 10uF series capacitor)
 
-// ════════════════════════════════════════════════════════════════
-// ▌ OBJECT INITIALIZATION
-// ════════════════════════════════════════════════════════════════
+// OBJECT INITIALIZATION
 Adafruit_NeoPixel pixels(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 Adafruit_MPR121 cap = Adafruit_MPR121();
 
@@ -80,9 +74,7 @@ const char* soundFiles[NUM_PADS] = {
   ""               // Pad 11
 };
 
-// ════════════════════════════════════════════════════════════════
-// ▌ COLOR SETUP
-// ════════════════════════════════════════════════════════════════
+// COLOR SETUP
 void setupSonicColors() {
   padColors[0]  = pixels.Color(0, 0, 255);     // Blue
   padColors[1]  = pixels.Color(0, 255, 255);   // Cyan
@@ -115,9 +107,7 @@ void printMPR121Readings() {
   Serial.println();
 }
 
-// ════════════════════════════════════════════════════════════════
-// ▌ SETUP
-// ════════════════════════════════════════════════════════════════
+// SETUP
 void setup() {
   Serial.begin(115200);
   delay(2000);
@@ -143,7 +133,7 @@ void setup() {
   delay(300);
   pixels.clear();
   pixels.show();
-  Serial.println("      ✓ LED test complete.\n");
+  Serial.println("      [OK] LED test complete.\n");
 
   // 2. Initialize Qwiic I2C Bus (100kHz for high stability)
   Serial.println("[2/6] Initializing I2C bus...");
@@ -153,11 +143,11 @@ void setup() {
   // Try to initialize MPR121 and print diagnostics
   Serial.print("      Trying MPR121 at 0x"); Serial.println(MPR121_ADDR, HEX);
   if (!cap.begin(MPR121_ADDR, &Wire)) {
-    Serial.println("      ❌ ERROR: MPR121 not found at 0x5A!");
+    Serial.println("      [ERROR] MPR121 not found at 0x5A!");
     Serial.println("      Please check Stemma cable orientation, VCC=3.3V and common GND.");
     // don't hang the system; continue so other systems (LEDs/audio) still function
   } else {
-    Serial.println("      ✓ MPR121 Touch Sensor Online.");
+    Serial.println("      [OK] MPR121 Touch Sensor Online.");
 
     // Lower thresholds from aggressive 40/20 to a more typical 12/6 for sensitivity
     cap.setAutoconfig(true);       // try autoconfig to optimize electrodes
@@ -169,14 +159,14 @@ void setup() {
   // 3. Initialize MicroSD Card
   Serial.println("[3/6] Initializing SD card...");
   if (!SD.begin(SD_CS_PIN)) {
-    Serial.println("      ❌ SD Card initialization failed!");
+    Serial.println("      [ERROR] SD Card initialization failed!");
     sdCardReady = false;
   } else {
     if (SD.cardType() == CARD_NONE) {
-      Serial.println("      ❌ No SD card detected!");
+      Serial.println("      [ERROR] No SD card detected!");
       sdCardReady = false;
     } else {
-      Serial.println("      ✓ SD Card initialized.");
+      Serial.println("      [OK] SD Card initialized.");
       sdCardReady = true;
 
       // List files on SD card (safe method)
@@ -190,22 +180,22 @@ void setup() {
   Serial.println("[4/6] Initializing analog audio output...");
   out = new AudioOutputI2S(0, AudioOutputI2S::INTERNAL_DAC);
   if (out == NULL) {
-    Serial.println("      ❌ Failed to allocate AudioOutputI2S!");
+    Serial.println("      [ERROR] Failed to allocate AudioOutputI2S!");
     while (1);
   }
 
   // 8002A board is a mono class-D amp intended for direct analog audio input.
   out->SetOutputModeMono(true);
   out->SetGain(0.12); // start conservative to avoid pops and high volume
-  Serial.println("      ✓ Audio output configured for 3V3-powered 8002A amplifier.\n");
+  Serial.println("      [OK] Audio output configured for 3V3-powered 8002A amplifier.\n");
 
   Serial.println("[5/6] Allocating WAV generator...");
   wav = new AudioGeneratorWAV();
   if (wav == NULL) {
-    Serial.println("      ❌ Failed to allocate WAV generator!");
+    Serial.println("      [ERROR] Failed to allocate WAV generator!");
     while (1);
   }
-  Serial.println("      ✓ WAV generator ready.\n");
+  Serial.println("      [OK] WAV generator ready.\n");
 
   Serial.println("[6/6] Finalizing setup. System ready.");
   Serial.println("====================================");
@@ -213,9 +203,7 @@ void setup() {
   Serial.println("====================================\n");
 }
 
-// ════════════════════════════════════════════════════════════════
-// ▌ MAIN LOOP
-// ════════════════════════════════════════════════════════════════
+// MAIN LOOP
 void loop() {
   // Feed audio generator buffer
   if (wav != NULL && wav->isRunning()) {
@@ -231,7 +219,7 @@ void loop() {
   for (uint8_t i = 0; i < NUM_PADS; i++) {
     // Pad Pressed Event
     if ((currentTouched & _BV(i)) && !(lastTouched & _BV(i))) {
-      Serial.print("▶️ Pad ");
+      Serial.print("Pad ");
       Serial.print(i);
       Serial.println(" Touched.");
 
@@ -241,7 +229,7 @@ void loop() {
 
     // Pad Released Event
     if (!(currentTouched & _BV(i)) && (lastTouched & _BV(i))) {
-      Serial.print("⏹️ Pad ");
+      Serial.print("Pad ");
       Serial.print(i);
       Serial.println(" Released.");
 
@@ -262,9 +250,7 @@ void loop() {
   lastTouched = currentTouched;
 }
 
-// ════════════════════════════════════════════════════════════════
-// ▌ HELPER FUNCTIONS
-// ════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
 
 void listSDFiles() {
   File root = SD.open("/");
